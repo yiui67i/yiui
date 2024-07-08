@@ -1,0 +1,105 @@
+#include <iostream>
+#include <fstream>
+#include <sqlite3.h>
+#include <vector>
+#include <sstream>
+#include <algorithm>
+
+using namespace std;
+
+int main() {
+// Connecting to database
+sqlite3 *db;
+int rc = sqlite3_open("main.db", &db);
+if (rc != SQLITE_OK) {
+cerr << "Database opening error: " << sqlite3_errmsg(db) << endl;
+return 1;
+}
+
+// Open text file
+ifstream infile("exampledata.txt");
+if (!infile.is_open()) {
+cerr << "Error opening text file" << endl;
+sqlite3_close(db);
+return 1;
+}
+
+// Process data lines
+vector<string> lineData;
+string line;
+while (getline(infile, line)) {
+// Replace || with |NULL|
+size_t pos = 0;
+while ((pos = line.find("||", pos)) != string::npos) {
+line.replace(pos, 2, "|NULL|");
+pos += 6; // Move past the inserted "NULL"
+}
+
+ line += "|0.000000";
+ 
+// Trim leading whitespace
+pos = line.find_first_not_of(' ');
+if (pos != string::npos) {
+line.erase(0, pos);
+}
+ 
+lineData.clear();
+stringstream ss(line);
+string token;
+while (getline(ss, token, '|')) {
+lineData.push_back(token);
+}
+
+ cout << "----------------------" << endl;
+ for (int i = 0; i < lineData.size(); i++){
+   cout << lineData[i] << endl;
+ }
+
+
+if (lineData.size() != 6) {
+cerr << "Invalid row format: " << line << endl;
+continue;
+}
+
+ if (lineData[5].empty() || lineData[5] == "NULL"){
+   lineData[5] = "0.000000";
+ }
+ 
+/*
+cout << "Inserting values: ";
+for (const auto& value : lineData) {
+cout << value << " ";
+}
+cout << endl;
+*/
+
+
+ 
+string sql = "INSERT INTO FS (Account, User, NormShares, NormUsage, EffectvUsage, FairShare) VALUES (?, ?, ?, ?, ?, ?)";
+sqlite3_stmt *stmt;
+rc = sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr);
+if (rc != SQLITE_OK) {
+cerr << "Query preparing error: " << sqlite3_errmsg(db) << endl;
+continue;
+}
+
+sqlite3_bind_text(stmt, 1, lineData[0].c_str(), -1, SQLITE_TRANSIENT);
+sqlite3_bind_text(stmt, 2, lineData[1].c_str(), -1, SQLITE_TRANSIENT);
+sqlite3_bind_double(stmt, 3, stod(lineData[2]));
+sqlite3_bind_double(stmt, 4, stod(lineData[3]));
+sqlite3_bind_double(stmt, 5, stod(lineData[4]));
+sqlite3_bind_double(stmt, 6, stod(lineData[5]));
+
+rc = sqlite3_step(stmt);
+if (rc != SQLITE_DONE) {
+cerr << "Query execution error: " << sqlite3_errmsg(db) << endl;
+}
+
+sqlite3_finalize(stmt);
+}
+
+infile.close();
+sqlite3_close(db);
+
+return 0;
+}
